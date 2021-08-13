@@ -18,10 +18,7 @@ import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder;
 import io.netty.handler.codec.http.multipart.InterfaceHttpData;
 import io.netty.util.CharsetUtil;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.net.URI;
 import java.nio.channels.FileChannel;
 
@@ -53,7 +50,7 @@ public class MyHttUploadServerHandler extends SimpleChannelInboundHandler<HttpOb
                 httpDecoder = new HttpPostRequestDecoder(factory, httpRequest);
                 httpDecoder.setDiscardThreshold(0);
             } else {
-                sendResponse(ctx, METHOD_NOT_ALLOWED, null);
+                sendResponse(ctx, METHOD_NOT_ALLOWED, null, null);
             }
         }
         if (httpDecoder != null) {
@@ -69,7 +66,7 @@ public class MyHttUploadServerHandler extends SimpleChannelInboundHandler<HttpOb
         }
     }
 
-    private void readChunk(ChannelHandlerContext ctx) throws IOException {
+    private void readChunk(ChannelHandlerContext ctx) throws Exception {
         while (httpDecoder.hasNext()) {
             InterfaceHttpData data = httpDecoder.next();
             if (data != null) {
@@ -87,7 +84,7 @@ public class MyHttUploadServerHandler extends SimpleChannelInboundHandler<HttpOb
                             try (FileChannel inputChannel = new FileInputStream(fileUpload.getFile()).getChannel();
                                  FileChannel outputChannel = new FileOutputStream(file).getChannel()) {
                                 outputChannel.transferFrom(inputChannel, 0, inputChannel.size());
-                                sendResponse(ctx, CREATED, "file name: " + file.getAbsolutePath());
+                                sendResponse(ctx, CREATED, "file name: " + file.getAbsolutePath(), file);
                             }
                             break;
                     }
@@ -104,7 +101,7 @@ public class MyHttUploadServerHandler extends SimpleChannelInboundHandler<HttpOb
      * @param status
      * @param message
      */
-    private static void sendResponse(ChannelHandlerContext ctx, HttpResponseStatus status, String message) {
+    private static void sendResponse(ChannelHandlerContext ctx, HttpResponseStatus status, String message, File file) throws Exception {
         final FullHttpResponse response;
         String msgDesc = message;
         if (message == null) {
@@ -112,15 +109,16 @@ public class MyHttUploadServerHandler extends SimpleChannelInboundHandler<HttpOb
         }
         msgDesc += " \r\n";
 
-        final ByteBuf buffer = Unpooled.copiedBuffer(msgDesc, CharsetUtil.UTF_8);
+        final ByteBuf buffer = Unpooled.buffer();
+        buffer.writeBytes(new FileInputStream(file), Integer.parseInt(String.valueOf(file.length())));
         if (status.code() >= HttpResponseStatus.BAD_REQUEST.code()) {
             response = new DefaultFullHttpResponse(HTTP_1_1, status, buffer);
         } else {
             response = new DefaultFullHttpResponse(HTTP_1_1, status, buffer);
         }
-        response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain; charset=UTF-8");
+        response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/pdf");
 
-        // Close the connection as soon as the response is sent.
+   //      Close the connection as soon as the response is sent.
         ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
     }
 
@@ -132,6 +130,7 @@ public class MyHttUploadServerHandler extends SimpleChannelInboundHandler<HttpOb
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+        cause.printStackTrace();
         System.out.println("Got exception " + cause);
         ctx.channel().close();
     }
